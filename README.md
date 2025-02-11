@@ -2,7 +2,7 @@ Install LMStudio:
 Download LMStudio from `https://lmstudio.ai/`
 Follow the installation steps provided by LMStudio.
 
-Install ComfyUI:
+Install ComfyUI: (if you want image generation)
 Go to` https://comfyui.com/` and download ComfyUI.
 Extract the downloaded file and run the installer.
 
