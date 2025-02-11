@@ -25,5 +25,7 @@ Replace yourusername with your actual GitHub username and yourproject with the n
 Install Project Requirements:
 Navigate into the cloned project directory.
 Run the following command to install the required Python packages:
+
 pip install -r requirements.txt
+
 This will install all the necessary dependencies for your project.
