@@ -32,3 +32,34 @@ def read_whatsnew():
             return f.read()
     except Exception as e:
         return "Error: 'whatsnew.txt' could not be read."
+
+async def add_reaction_if_interesting(message: discord.Message):
+    import random
+    # Only proceed with a 10% chance.
+    if random.random() > 0.1:
+        return
+    if len(message.content) < 5:
+        return
+    prompt = (
+        f"Given the following message:\n\"{message.content}\"\n"
+        "Suggest one reaction emoji that best expresses an appropriate reaction to this message. "
+        "If the message is not interesting, reply with 'none'. Return only the emoji or 'none'."
+    )
+    reaction = await asyncio.to_thread(call_lmstudio, prompt)
+    reaction = reaction.strip()
+    if reaction.lower() != "none" and reaction:
+        try:
+            await message.add_reaction(reaction)
+        except Exception as e:
+            print(f"[DEBUG] Error adding reaction: {e}")
+def get_member_info(member: discord.Member) -> str:
+    status = str(member.status)
+    activities = []
+    for activity in member.activities:
+        if hasattr(activity, "name") and activity.name:
+            activities.append(activity.name)
+    if activities:
+        activity_str = ", ".join(activities)
+    else:
+        activity_str = "not playing anything"
+    return f"{member.display_name} is {status} and currently {activity_str}."

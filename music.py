@@ -66,11 +66,9 @@ async def play_song(ctx, query: str):
     async def after_playing(error):
         if error:
             print(f"[DEBUG] Player error: {error}")
-        fut = asyncio.run_coroutine_threadsafe(play_next(ctx), ctx.bot.loop)
-        try:
-            fut.result()
-        except Exception as ex:
-            print(f"[DEBUG] Error playing next song: {ex}")
+        # Note: We now explicitly call play_next in next_command.
+        # The after callback can be used for logging or additional cleanup.
+        print("[DEBUG] after_playing callback triggered.")
 
     vc.play(player, after=after_playing)
     # Send a control message with reaction buttons.
@@ -128,19 +126,21 @@ async def play_command(ctx, query: str):
         await play_song(ctx, query)
 
 async def next_command(ctx):
-    """Skips the current song."""
+    """Skips to the next song and starts playback immediately."""
     vc = ctx.voice_client
     if not vc or not vc.is_connected():
         await ctx.send("I'm not connected to a voice channel!")
         return
-    if vc.is_playing():
-        vc.stop()  # This triggers the after callback which plays the next song.
+    if vc.is_playing() or vc.is_paused():
+        vc.stop()  # Stop current song.
         await ctx.send("Skipping to the next song...")
+        # Explicitly call play_next to start the next song.
+        await play_next(ctx)
     else:
         await ctx.send("There is no song playing right now.")
 
 async def stop_command(ctx):
-    """Stops the song, clears the queue, and disconnects from the voice channel."""
+    """Stops the current song, clears the queue, and disconnects from the voice channel."""
     vc = ctx.voice_client
     if not vc:
         await ctx.send("I'm not connected to a voice channel!")

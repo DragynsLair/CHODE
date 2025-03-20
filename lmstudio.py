@@ -1,4 +1,5 @@
 import requests
+from chode import config
 
 LMSTUDIO_URL = "http://127.0.0.1:1234"
 
@@ -21,3 +22,14 @@ def chat_completion(prompt: str, system_message: str = "You are chode the chatbo
 
 def call_lmstudio(prompt: str) -> str:
     return chat_completion(prompt)
+
+def call_lmstudio_with_personality(prompt: str, guild_id: str) -> str:
+    # Attempt to load personality configuration for the given guild.
+    try:
+        conf = config.load_server_config(guild_id)
+    except Exception as e:
+        conf = {}
+    # Use a default personality if none is found.
+    personality = conf.get("personality", "You are chode, a friendly chatbot.")
+    # Use the personality as the system message.
+    return chat_completion(prompt, system_message=personality)

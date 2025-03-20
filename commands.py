@@ -7,6 +7,7 @@ def setup_commands(bot):
     @bot.command(name="chodehelp")
     async def chodehelp(ctx):
         content = utils.read_whatsnew()
+        # Use a default system message for help.
         system_message = "Return the following text exactly as is, without any modifications."
         response_text = await asyncio.to_thread(lmstudio.call_lmstudio, content + "\n\n" + system_message)
         if len(response_text) > 2000:
@@ -28,6 +29,7 @@ def setup_commands(bot):
     async def genimg(ctx, *, prompt: str):
         final_prompt = prompt
         if prompt.strip().endswith("++"):
+            await ctx.send("Hold on while I reword your prompt...")
             final_prompt = prompt.strip()[:-2].strip()
             final_prompt = utils.reword_prompt(final_prompt)
         elif "make this prompt better" in prompt.lower():
@@ -45,7 +47,6 @@ def setup_commands(bot):
             await ctx.send("You are not connected to a voice channel!")
             return
 
-        # Connect if not already connected.
         if not ctx.voice_client:
             try:
                 await ctx.author.voice.channel.connect()
@@ -106,26 +107,39 @@ def setup_commands(bot):
 
     @bot.event
     async def on_message(message):
+        # Ignore messages sent by the bot itself.
         if message.author == bot.user:
             return
 
+        # Determine the server identifier.
         if message.guild:
             server_id = message.guild.id
+            # Load personality for this server (default provided if missing).
+            conf = config.load_server_config(server_id)
+            personality = conf.get("personality", "You are Chode, a friendly chatbot.")
         else:
             server_id = f"DM-{message.author.id}"
+            personality = "You are Chode, a friendly chatbot."  # Default in DMs
 
+        # Store the message in the database.
         database.store_memory(server_id, message.channel.id, message.author.id, message.content)
 
+        # Process commands if the message starts with the command prefix.
         if message.content.startswith("!!"):
             await bot.process_commands(message)
             return
 
+        # For DM messages, process as conversation (and include member info if available).
         if message.guild is None:
+            # Remove any bot mention from content.
+            cleaned_content = message.clean_content.replace(bot.user.mention, "").strip()
+            member_info = utils.get_member_info(message.author) if hasattr(utils, "get_member_info") else ""
             conversation_history = database.get_recent_conversation(server_id, message.channel.id)
             prompt_for_llm = (
+                f"System: {personality}\n"
                 f"Conversation History:\n{conversation_history}\n"
-                f"User {message.author.name} said: {message.content}\n"
-                f"Respond as chode:"
+                f"User {message.author.name} (Status: {member_info}) said: {cleaned_content}\n"
+                f"Respond as Chode:"
             )
             async with message.channel.typing():
                 response_text = await asyncio.to_thread(lmstudio.call_lmstudio, prompt_for_llm)
@@ -133,15 +147,28 @@ def setup_commands(bot):
                 await utils.send_long_message(message.channel, response_text)
             else:
                 await message.channel.send(response_text)
+            # Also process DM commands.
+            await bot.process_commands(message)
             return
 
+        # For guild messages where the bot is mentioned.
         if bot.user in message.mentions:
             content_lower = message.content.lower()
             ctx_obj = await bot.get_context(message)
+            # If asking what a user is playing, filter out the bot's own mention.
+            if "what is" in content_lower and "playing" in content_lower:
+                members = [m for m in message.mentions if m != bot.user]
+                if members and hasattr(utils, "get_member_info"):
+                    member_info = utils.get_member_info(members[0])
+                    await message.channel.send(member_info)
+                    return
+
+            # For image generation when the bot is mentioned.
             if "generate" in content_lower and any(word in content_lower for word in ["photo", "image", "picture"]):
                 new_prompt = message.clean_content.replace(bot.user.mention, "").strip()
                 final_prompt = new_prompt
                 if new_prompt.strip().endswith("++"):
+                    await message.channel.send("Hold on while I reword your prompt...")
                     final_prompt = new_prompt.strip()[:-2].strip()
                     final_prompt = utils.reword_prompt(final_prompt)
                 elif "make this prompt better" in new_prompt.lower():
@@ -151,6 +178,7 @@ def setup_commands(bot):
                 return
             elif "what server" in content_lower:
                 prompt_for_llm = (
+                    f"System: {personality}\n"
                     f"The user asked: '{message.content}'. The server details are as follows: "
                     f"Name: {message.guild.name}, ID: {message.guild.id}, and there are {message.guild.member_count} members. "
                     f"Respond in your own words as Chode."
@@ -160,9 +188,12 @@ def setup_commands(bot):
                 server_info = (
                     f"Server Name: {message.guild.name}, Server ID: {message.guild.id}, Member Count: {message.guild.member_count}"
                 )
+                # Remove the bot's mention from the content.
+                cleaned_content = message.clean_content.replace(bot.user.mention, "").strip()
                 prompt_for_llm = (
+                    f"System: {personality}\n"
                     f"Server Info: {server_info}\nConversation History:\n{conversation_history}\n"
-                    f"User {message.author.name} said: {message.content}\nRespond as chode:"
+                    f"User {message.author.name} said: {cleaned_content}\nRespond as Chode:"
                 )
             async with message.channel.typing():
                 response_text = await asyncio.to_thread(lmstudio.call_lmstudio, prompt_for_llm)
@@ -171,6 +202,8 @@ def setup_commands(bot):
             else:
                 await message.channel.send(response_text)
             return
+
+        # For any other guild message, process commands and add a reaction if interesting.
         else:
             asyncio.create_task(utils.add_reaction_if_interesting(message))
             await bot.process_commands(message)
